@@ -1,10 +1,15 @@
-from __future__ import absolute_import, division, print_function
-
-import numpy as np
 import pandas as pd
 
 
-def one_line(filename):
+def one_line(filename, reverse=True):
+    """Parse a .csv file containing current density exported as a line and return a pandas DataFrame containing the data
+    and metadata as a monkey-patched dict 'meta'.
+
+    :param str filename: the filename.
+    :param bool reverse: Sonnet exports values at higher coordinate values first; if True, reverse the DataFrame rows.
+    :return: the data in the file.
+    :rtype: pd.DataFrame
+    """
     meta = dict()
     with open(filename) as f:
         # VER : 2,,U:/Commun/Projet CQPS TiN/Calculs/Sonnet/cross-correlation_experiment/...
@@ -14,7 +19,7 @@ def one_line(filename):
         # Parameters:,Lk_pH_per_square=1000.0 trace=5.0 gap=5.0 ground=300.0
         line2 = f.readline().strip().split(',')
         assert line2[0] == 'Parameters:'
-        kv_pairs = [token.split('=') for token in line2[1]]
+        kv_pairs = [token.split('=') for token in line2[1].split(' ')]
         meta['parameters'] = dict([(kv[0], float(kv[1])) for kv in kv_pairs])
         # Frequency:,1e+09
         line3 = f.readline().strip().split(',')
@@ -32,6 +37,7 @@ def one_line(filename):
         line6 = f.readline().strip().split(',')
         assert line6[0] == 'Export Positions in:'
         meta['units'] = dict(symbol=line6[1], value=float(line6[2]))
+        # ToDo: add this line to have the current in physical units
         # Export Steps:,0.125,UM, by,0.125,UM,Area,0.015625,MKS Area,1.5625e-14,m^2
         line7 = f.readline().strip().split(',')
         # JX Magnitude,Complex Form,Amps/Meter
@@ -47,6 +53,9 @@ def one_line(filename):
         meta[line11[0]] = float(line11[1])
     if 'complex' in meta['form'].lower():
         df = pd.read_csv(filename, header=11, names=[meta['coordinate'], meta['physical quantity']],
-                         converters={1: lambda s: sum([complex(n) for n in s.strip().split(' ')])}
-                         ).iloc[::-1]  # Reverse to start with the lowest y-values
-    return df, meta
+                         converters={1: lambda s: sum([complex(n) for n in s.strip().split(' ')])})
+        if reverse:  # Reverse to start with the lowest y-values
+            df = df.reindex(index=df.index[::-1])
+    # ToDo: catch warning or return meta separately
+    df.meta = meta
+    return df
